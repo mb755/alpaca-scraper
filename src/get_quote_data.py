@@ -1,15 +1,18 @@
 import configparser as cfg
+import os
 
 from utils.config_parser import default_parser
 from utils.alpaca_data import get_active_assets
+from utils.math import convert_size
 
 from alpaca.trading.client import TradingClient
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockQuotesRequest
 
-from datetime import datetime
+from datetime import datetime, date, time
 from pytz import timezone
 
+root_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 ###########################################################
 # parse command line arguments
@@ -41,27 +44,42 @@ trading_client = TradingClient(api_key=api_key, secret_key=secret_key)
 assets_df = get_active_assets(trading_client)
 
 # switch to all assets
-tickers = ["HD", "WMT"]
+tickers = ["HD", "WMT", "TSLA"]
 
-tz = timezone("US/Eastern")
-
-print(datetime.now(tz))
+nyc = timezone("US/Eastern")
 
 marketdata_client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
+
+date = date(2024, 2, 5)
+date_str = date.strftime("%Y-%m-%d")
 
 request_params = StockQuotesRequest(
     symbol_or_symbols=tickers,
     # these times are in UTC, this loads in a full day of ticks
-    start=datetime(2024, 2, 5, 9, 00, 00),
-    end=datetime(2024, 2, 6, 1, 00, 00),
+    start=nyc.localize(datetime.combine(date, time(3, 50))),
+    end=nyc.localize(datetime.combine(date, time(21, 10))),
 )
 
 result = marketdata_client.get_stock_quotes(request_params)
 
 result_df = result.df
 
+# flatten conditions, so the result can be serialized
+result_df["conditions"] = result_df["conditions"].apply(lambda x: ",".join(x))
+
 print(result_df.head())
 
-print(result_df.shape)
+pandas_memory_usage = result_df.memory_usage(index=True).sum()
 
-# CR TODO: maybe get this in pages? Maybe the results come sorted by symbol?
+print(f"DataFrame usage: {convert_size(pandas_memory_usage)}")
+
+result_df.to_hdf(
+    f"{root_dir}/output/quote_data_{date_str}{output_suffix}.h5",
+    key="data",
+    mode="w",
+    format="table",
+    complevel=9,
+    complib="blosc",
+)
+
+# maybe save different assets in different tables, with key=ticker
