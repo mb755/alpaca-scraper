@@ -1,7 +1,6 @@
 import configparser as cfg
 import os
-
-# import pandas as pd
+import pandas as pd
 
 from utils.config_parser import default_parser
 from utils.alpaca_data import get_active_assets
@@ -26,6 +25,9 @@ args = vars(parser.parse_args())
 
 output_suffix = args["output_suffix"]
 config_file = args["config_file"]
+all_assets = args["all_assets"]
+ticker_file = args["ticker_file"]
+overwrite = args["overwrite"]
 
 ###########################################################
 # grab initial values from config file
@@ -43,11 +45,11 @@ secret_key = config.get("alpaca", "secret_key")
 
 trading_client = TradingClient(api_key=api_key, secret_key=secret_key)
 
-assets_df = get_active_assets(trading_client)
-all_stocks = assets_df["symbol"].tolist()
-
-# CR TODO: eventually switch to all assets
-tickers = ["EGRX", "HD", "WMT", "TSLA"]
+if all_assets:
+    assets_df = get_active_assets(trading_client)
+    tickers = assets_df["symbol"].tolist()
+else:
+    tickers = pd.read_csv(ticker_file, header=None).iloc[:, 0].tolist()
 
 nyc = timezone("US/Eastern")
 
@@ -59,16 +61,23 @@ date_str = date.strftime("%Y-%m-%d")
 
 output_filename = f"{root_dir}/output/quote_data_{date_str}{output_suffix}.h5"
 
-# if output already exists, print a warning and exit
+# if output already exists, print a warning
+initial_mode = "a"
 if os.path.exists(output_filename):
-    print(f"Output file {output_filename} already exists. Exiting.")
-    exit(1)
+    if overwrite:
+        print(f"Output file {output_filename} already exists. Overwriting.", flush=True)
+        initial_mode = "w"
+    else:
+        print(f"Output file {output_filename} already exists. Exiting.", flush=True)
+        exit(1)
+
+mode = initial_mode
 
 for ticker in (pbar := tqdm(tickers)):
     pbar.set_description(f"Processing {ticker}")
 
     request_params = StockQuotesRequest(
-        symbol_or_symbols=tickers,
+        symbol_or_symbols=[ticker],
         # these times are in UTC, this loads in a full day of ticks
         start=nyc.localize(datetime.combine(date, time(3, 50))),
         end=nyc.localize(datetime.combine(date, time(21, 10))),
@@ -84,10 +93,13 @@ for ticker in (pbar := tqdm(tickers)):
     result_df.to_hdf(
         output_filename,
         key=ticker,
-        mode="a",
+        mode=mode,
         format="table",
         complevel=9,
         complib="blosc",
     )
 
-# maybe save different assets in different tables, with key=ticker
+    # everything after the first table has to be appended
+    mode = "a"
+
+print(f"Data saved to {output_filename}", flush=True)

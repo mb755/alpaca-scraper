@@ -48,6 +48,27 @@ def default_parser(description):
         required=False,
         default=root_dir + "/config/api-keys.ini",
     )
+    parser.add_argument(
+        "-a",
+        "--all-assets",
+        help="Use all assets instead of a pre-specified list of tickers",
+        required=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "-t",
+        "--ticker-file",
+        help="Filename containing list of tickers to get data for",
+        required=False,
+        default=root_dir + "/config/default-tickers.csv",
+    )
+    parser.add_argument(
+        "-ow",
+        "--overwrite",
+        help="Overwrite existing files",
+        required=False,
+        action="store_true",
+    )
     return parser
 
 
