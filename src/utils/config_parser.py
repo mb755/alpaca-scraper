@@ -34,6 +34,21 @@ def default_parser(description):
         description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
+        "-s",
+        "--start-date",
+        help="Start date for data collection (YYYY-MM-DD, inclusive)",
+        required=True,
+        type=str,
+    )
+    parser.add_argument(
+        "-e",
+        "--end-date",
+        help="End date for data collection (YYYY-MM-DD, inclusive)",
+        required=False,
+        default=None,
+        type=str,
+    )
+    parser.add_argument(
         "-o",
         "--output-suffix",
         help="This string is appended to all output filenames",

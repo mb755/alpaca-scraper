@@ -3,14 +3,12 @@ import os
 import pandas as pd
 
 from utils.config_parser import default_parser
-from utils.alpaca_data import get_active_assets
+from utils.alpaca_data import get_active_assets, stockday_request
 
 from alpaca.trading.client import TradingClient
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockQuotesRequest
 
-from datetime import datetime, date, time
-from pytz import timezone
+from datetime import date, timedelta
 from tqdm import tqdm
 
 root_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -28,6 +26,8 @@ config_file = args["config_file"]
 all_assets = args["all_assets"]
 ticker_file = args["ticker_file"]
 overwrite = args["overwrite"]
+start_date = args["start_date"]
+end_date = args["end_date"] or start_date
 
 ###########################################################
 # grab initial values from config file
@@ -51,55 +51,61 @@ if all_assets:
 else:
     tickers = pd.read_csv(ticker_file, header=None).iloc[:, 0].tolist()
 
-nyc = timezone("US/Eastern")
-
 marketdata_client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
 
-# CR TODO: get a date or daterange from command line
-date = date(2024, 2, 5)
-date_str = date.strftime("%Y-%m-%d")
+start_date = date.fromisoformat(start_date)
+end_date = date.fromisoformat(end_date)
 
-output_filename = f"{root_dir}/output/quote_data_{date_str}{output_suffix}.h5"
+date_list = [
+    start_date + timedelta(days=x) for x in range((end_date - start_date).days + 1)
+]
 
-# if output already exists, print a warning
-initial_mode = "a"
-if os.path.exists(output_filename):
-    if overwrite:
-        print(f"Output file {output_filename} already exists. Overwriting.", flush=True)
-        initial_mode = "w"
-    else:
-        print(f"Output file {output_filename} already exists. Exiting.", flush=True)
-        exit(1)
+dates = pd.date_range(start_date, end_date).to_pydatetime()
+dates = list(map(lambda x: x.date(), dates))
 
-mode = initial_mode
+for date_itr in (pbar_date := tqdm(dates)):
+    date_str = date_itr.strftime("%Y-%m-%d")
+    pbar_date.set_description(f"Processing {date_str}")
 
-for ticker in (pbar := tqdm(tickers)):
-    pbar.set_description(f"Processing {ticker}")
+    output_filename = f"{root_dir}/output/quote_data_{date_str}{output_suffix}.h5"
 
-    request_params = StockQuotesRequest(
-        symbol_or_symbols=[ticker],
-        # these times are in UTC, this loads in a full day of ticks
-        start=nyc.localize(datetime.combine(date, time(3, 50))),
-        end=nyc.localize(datetime.combine(date, time(21, 10))),
-    )
+    # if output already exists, print a warning
+    initial_mode = "a"
+    if os.path.exists(output_filename):
+        if overwrite:
+            tqdm.write(f"Output file {output_filename} already exists. Overwriting.")
+            initial_mode = "w"
+        else:
+            tqdm.write(f"Output file {output_filename} already exists. Exiting.")
+            continue
 
-    result = marketdata_client.get_stock_quotes(request_params)
+    mode = initial_mode
 
-    result_df = result.df
+    for ticker in (pbar_ticker := tqdm(tickers, leave=False)):
+        pbar_ticker.set_description(f"Processing {ticker}")
 
-    # flatten conditions, so the result can be serialized
-    result_df["conditions"] = result_df["conditions"].apply(lambda x: ",".join(x))
+        request_params = stockday_request(ticker, date_itr)
+        result = marketdata_client.get_stock_quotes(request_params)
 
-    result_df.to_hdf(
-        output_filename,
-        key=ticker,
-        mode=mode,
-        format="table",
-        complevel=9,
-        complib="blosc",
-    )
+        result_df = result.df
 
-    # everything after the first table has to be appended
-    mode = "a"
+        if result_df.empty:
+            tqdm.write(f"No data for {ticker} on {date_str}. Skipping.")
+            continue
 
-print(f"Data saved to {output_filename}", flush=True)
+        # flatten conditions, so the result can be serialized
+        result_df["conditions"] = result_df["conditions"].apply(lambda x: ",".join(x))
+
+        result_df.to_hdf(
+            output_filename,
+            key=ticker.replace(
+                ".", "_"
+            ),  # for easier access to preferred shares that look like LXP.PRC
+            mode=mode,
+            format="table",
+            complevel=9,
+            complib="blosc",
+        )
+
+        # everything after the first table has to be appended
+        mode = "a"
