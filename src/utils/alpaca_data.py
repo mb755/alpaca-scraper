@@ -9,6 +9,11 @@ from pytz import timezone
 
 
 def get_active_assets(trading_client):
+    """!@brief Get all active assets from the Alpaca API
+    @param trading_client (TradingClient): Alpaca TradingClient object
+
+    @return DataFrame: DataFrame containing all active assets
+    """
     search_params = GetAssetsRequest(
         asset_class=AssetClass.US_EQUITY, status=AssetStatus.ACTIVE
     )
@@ -24,6 +29,12 @@ def get_active_assets(trading_client):
 
 
 def stockday_request(ticker, date):
+    """!@brief Create a request for stock quotes for a single day
+    @param ticker (str): Ticker symbol to get data for
+    @param date (datetime.date): Date to get data for
+
+    @return StockQuotesRequest: Request object for stock quotes
+    """
 
     nyc = timezone("US/Eastern")
 
