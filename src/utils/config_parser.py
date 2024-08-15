@@ -21,9 +21,13 @@ def default_parser(description):
     """!@brief creates a parser for default command line arguments
     @details
     The default arguments are: <br>
-    -o, --output-suffix: string to be appended to all output filenames <br>
-    -r, --random-seed: random seed used for random number generation <br>
+    -s, --start-date: start date for data collection <br>
+    -e, --end-date: end date for data collection <br>
+    -o, --output-suffix: string appended to all output filenames <br>
     -c, --config-file: configuration file defining initial hyperparameters <br>
+    -a, --all-assets: use all assets instead of a pre-specified list of tickers <br>
+    -t, --ticker-file: filename containing list of tickers to get data for <br>
+    -ow, --overwrite: overwrite existing files <br>
 
     @param description (str): text that is displayed in the -h help output
 
